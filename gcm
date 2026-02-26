@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+import sys
+from config.config_manager import load_config
+from core.git_utils import get_staged_diff, commit_changes, auto_add_all
+from core.ollama import is_ollama_running, generate_commit_message
+
+
+def main():
+    # load settings
+    config = load_config()
+
+
+    # check ollama daemon
+    if not is_ollama_running():
+        print("[!] Ollama is not running. Start it with 'ollama serve'.")
+        sys.exit(1)
+
+
+    # auto add
+    if config.get("auto_git_add", False):
+        print("[*] Auto-adding all changes (git add .)...")
+        auto_add_all()
+
+
+    # get diff
+    diff = get_staged_diff()
+    
+    if not diff:
+        print("[i] No staged changes found. Use 'git add' before running gcm.")
+        sys.exit(0)
+
+
+    # run model
+    model = config.get("llm_model", "codellama")
+    print(f"[*] Analyzing changes using '{model}'...")
+    
+    message = generate_commit_message(diff, model=model)
+
+
+    if not message:
+        print("[ERROR] Could not generate commit message.")
+        sys.exit(1)
+
+
+    print("\n[+] Suggested commit message:")
+    print(f"    {message}\n")
+
+
+    # auto commit or prompt
+    if config.get("auto_commit", False):
+        print("[*] Auto-commit is enabled. Committing...")
+        
+        if commit_changes(message):
+            print("[OK] Auto-commit successful.")
+        else:
+            print("[ERROR] Failed to commit.")
+            
+    else:
+        choice = input("Use this message? (y/n): ").strip().lower()
+        
+        if choice == 'y':
+            if commit_changes(message):
+                print("[OK] Commit created successfully.")
+            else:
+                print("[ERROR] Failed to commit.")
+        else:
+            print("[*] Commit aborted.")
+
+
+if __name__ == "__main__":
+    main()
